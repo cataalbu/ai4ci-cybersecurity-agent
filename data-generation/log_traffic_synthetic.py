@@ -1,4 +1,4 @@
-import os
+
 import random
 import re
 import sys
@@ -6,52 +6,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
-
-
-# ----------------------------
-# Helpers
-# ----------------------------
-
-def iso_z(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def nginx_time(dt: datetime) -> str:
-    return dt.strftime("%d/%b/%Y:%H:%M:%S +0000")
-
-
-def ufw_time(dt: datetime) -> str:
-    return dt.strftime("%b %d %H:%M:%S")
-
-
-def rand_public_ip(rng: random.Random) -> str:
-    while True:
-        a = rng.randint(11, 223)
-        b = rng.randint(0, 255)
-        c = rng.randint(0, 255)
-        d = rng.randint(1, 254)
-        if a in (10, 127) or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168) or (a == 169 and b == 254):
-            continue
-        if a >= 224:
-            continue
-        return f"{a}.{b}.{c}.{d}"
-
-
-def weighted_choice(rng: random.Random, items: List[str], weights: List[float]) -> str:
-    x = rng.random() * sum(weights)
-    acc = 0.0
-    for item, w in zip(items, weights):
-        acc += w
-        if x <= acc:
-            return item
-    return items[-1]
-
-
-def random_dt_in_window(rng: random.Random, start: datetime, end: datetime) -> datetime:
-    delta_ms = (end - start).total_seconds() * 1000
-    offset_ms = rng.random() * delta_ms
-    return start + timedelta(milliseconds=offset_ms)
-
+from utils import datetime_to_iso_utc, rand_public_ip, random_dt_in_window, nginx_time, ufw_time, weighted_choice
 
 def format_nginx_line(
     dt: datetime,
@@ -78,7 +33,7 @@ def format_api_line(
 ) -> str:
     safe_msg = msg.replace('"', "'")
     return (
-        f"{iso_z(dt)} level=INFO ip={ip} method={method} path={path} "
+        f"{datetime_to_iso_utc(dt)} level=INFO ip={ip} method={method} path={path} "
         f"status={status} latency_ms={latency_ms} user={user} msg=\"{safe_msg}\""
     )
 
@@ -102,10 +57,6 @@ def format_ufw_line(
     )
 
 
-# ----------------------------
-# Config
-# ----------------------------
-
 @dataclass
 class Config:
     hostname: str = "web-1"
@@ -122,7 +73,7 @@ class Config:
         }
     )
     seed: Optional[int] = 7
-    sleep_s: float = 0.0  # legacy; batch_interval_s controls cadence
+    sleep_s: float = 0.0
     batch_interval_s: float = 10.0
     out_nginx: Optional[str] = "nginx_access_nonllm.log"
     out_api: Optional[str] = "api_app_nonllm.log"
@@ -131,14 +82,11 @@ class Config:
     scenarios: List[str] = field(
         default_factory=lambda: ["healthy", "port_scan", "bruteforce", "ddos", "api_enum"]
     )
+    bg_count: int = min(max(3, lines_per_batch // 2), lines_per_batch - 1) if lines_per_batch > 1 else 0
 
 
 cfg = Config()
 
-
-# ----------------------------
-# Generators
-# ----------------------------
 
 def base_context(rng: random.Random, start: datetime, end: datetime) -> Dict[str, List[str]]:
     client_ips = [rand_public_ip(rng) for _ in range(6)]
@@ -160,8 +108,8 @@ def base_context(rng: random.Random, start: datetime, end: datetime) -> Dict[str
         "statuses": statuses,
         "uas": uas,
         "referers": referers,
-        "start": iso_z(start),
-        "end": iso_z(end),
+        "start": datetime_to_iso_utc(start),
+        "end": datetime_to_iso_utc(end),
     }
 
 
@@ -216,14 +164,13 @@ def gen_ufw_healthy(cfg: Config, rng: random.Random, start: datetime, end: datet
 
 
 def sprinkle_background(rng: random.Random, primary: List[str], background: List[str], target: int) -> List[str]:
-    # Interleave background lines with attack lines for realism while preserving target length.
+    # Adds background healthy logs to the primary logs
     bg = background[:]
     out: List[str] = []
     for ln in primary:
         out.append(ln)
         if bg:
             out.append(bg.pop())
-            # Occasionally add a second background line to thicken normal traffic.
             if bg and rng.random() < 0.4:
                 out.append(bg.pop())
     while bg and len(out) < target:
@@ -241,8 +188,7 @@ def gen_port_scan(cfg: Config, rng: random.Random, start: datetime, end: datetim
     while len(ports) < max(cfg.lines_per_batch, 30):
         ports.add(rng.randint(1, 65535))
     ports = sorted(list(ports))
-    bg_count = min(max(3, cfg.lines_per_batch // 2), cfg.lines_per_batch - 1) if cfg.lines_per_batch > 1 else 0
-    attack_count = cfg.lines_per_batch - bg_count
+    attack_count = cfg.lines_per_batch - cfg.bg_count
 
     attack_lines = []
     for i in range(attack_count):
@@ -252,7 +198,7 @@ def gen_port_scan(cfg: Config, rng: random.Random, start: datetime, end: datetim
         attack_lines.append(format_ufw_line(dt, cfg.hostname, "BLOCK", attacker_ip, cfg.target_ip, "TCP", spt, dpt, "SYN"))
 
     ctx = base_context(rng, start, end)
-    bg_lines = gen_ufw_healthy(cfg, rng, start, end, ctx, count=bg_count)
+    bg_lines = gen_ufw_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
     mixed = sprinkle_background(rng, attack_lines, bg_lines, cfg.lines_per_batch)
     return {"ufw": mixed}
 
@@ -260,8 +206,7 @@ def gen_port_scan(cfg: Config, rng: random.Random, start: datetime, end: datetim
 def gen_bruteforce(cfg: Config, rng: random.Random, start: datetime, end: datetime, ctx: Dict[str, List[str]]) -> Dict[str, List[str]]:
     attacker_ip = rand_public_ip(rng)
     normal_ips = ctx.get("client_ips", [])
-    bg_count = min(max(3, cfg.lines_per_batch // 2), cfg.lines_per_batch - 1) if cfg.lines_per_batch > 1 else 0
-    attack_count = cfg.lines_per_batch - bg_count
+    attack_count = cfg.lines_per_batch - cfg.bg_count
 
     # nginx
     nginx_lines = []
@@ -296,9 +241,9 @@ def gen_bruteforce(cfg: Config, rng: random.Random, start: datetime, end: dateti
         spt = rng.randint(10000, 65000)
         ufw_lines.append(format_ufw_line(dt, cfg.hostname, "BLOCK", attacker_ip, cfg.target_ip, "TCP", spt, dpt, "SYN"))
 
-    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=bg_count)
+    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
 
     return {
         "nginx": sprinkle_background(rng, nginx_lines, bg_nginx, cfg.lines_per_batch),
@@ -310,8 +255,7 @@ def gen_bruteforce(cfg: Config, rng: random.Random, start: datetime, end: dateti
 def gen_ddos(cfg: Config, rng: random.Random, start: datetime, end: datetime, ctx: Dict[str, List[str]]) -> Dict[str, List[str]]:
     bot_ips = [rand_public_ip(rng) for _ in range(5)]
     paths = ["/", "/health", "/static/app.js", "/api/v1/items"]
-    bg_count = min(max(3, cfg.lines_per_batch // 2), cfg.lines_per_batch - 1) if cfg.lines_per_batch > 1 else 0
-    attack_count = cfg.lines_per_batch - bg_count
+    attack_count = cfg.lines_per_batch - cfg.bg_count
 
     nginx_lines = []
     for _ in range(attack_count):
@@ -344,9 +288,9 @@ def gen_ddos(cfg: Config, rng: random.Random, start: datetime, end: datetime, ct
         flags = "SYN" if proto == "TCP" else ""
         ufw_lines.append(format_ufw_line(dt, cfg.hostname, verdict, ip, cfg.target_ip, proto, spt, dpt, flags))
 
-    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=bg_count)
+    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
 
     return {
         "nginx": sprinkle_background(rng, nginx_lines, bg_nginx, cfg.lines_per_batch),
@@ -367,9 +311,7 @@ def gen_api_enum(cfg: Config, rng: random.Random, start: datetime, end: datetime
         "/config",
         "/api/v1/items",
     ]
-
-    bg_count = min(max(3, cfg.lines_per_batch // 2), cfg.lines_per_batch - 1) if cfg.lines_per_batch > 1 else 0
-    attack_count = cfg.lines_per_batch - bg_count
+    attack_count = cfg.lines_per_batch - cfg.bg_count
 
     nginx_lines = []
     for _ in range(attack_count):
@@ -401,9 +343,9 @@ def gen_api_enum(cfg: Config, rng: random.Random, start: datetime, end: datetime
         spt = rng.randint(10000, 65000)
         ufw_lines.append(format_ufw_line(dt, cfg.hostname, verdict, robot_ip, cfg.target_ip, "TCP", spt, dpt, "SYN"))
 
-    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=bg_count)
-    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=bg_count)
+    bg_nginx = gen_nginx_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_api = gen_api_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
+    bg_ufw = gen_ufw_healthy(cfg, rng, start, end, ctx, count=cfg.bg_count)
 
     return {
         "nginx": sprinkle_background(rng, nginx_lines, bg_nginx, cfg.lines_per_batch),
@@ -411,10 +353,6 @@ def gen_api_enum(cfg: Config, rng: random.Random, start: datetime, end: datetime
         "ufw": sprinkle_background(rng, ufw_lines, bg_ufw, cfg.lines_per_batch),
     }
 
-
-# ----------------------------
-# Validation and IO
-# ----------------------------
 
 def append_lines(out_file: Optional[str], lines: List[str]) -> None:
     if not out_file:
@@ -454,10 +392,6 @@ def validate_outputs(outputs: Dict[str, List[str]], expected: int) -> List[str]:
     return errors
 
 
-# ----------------------------
-# Core loop
-# ----------------------------
-
 def generate_batch(cfg: Config, rng: random.Random, sim_t: datetime) -> Tuple[Dict[str, List[str]], datetime, List[str]]:
     start = sim_t
     end = start + timedelta(milliseconds=cfg.window_ms)
@@ -486,22 +420,16 @@ def generate_batch(cfg: Config, rng: random.Random, sim_t: datetime) -> Tuple[Di
     return outputs, end, errors
 
 
-# ----------------------------
-# Main
-# ----------------------------
-
 def main() -> int:
     rng = random.Random(cfg.seed)
     sim_t = datetime.now(timezone.utc)
 
-    print("# Synthetic log generator (no LLM)", file=sys.stderr)
-    print("# Writing logs to:", file=sys.stderr)
-    print(f"# - nginx: {cfg.out_nginx}", file=sys.stderr)
-    print(f"# - api:   {cfg.out_api}", file=sys.stderr)
-    print(f"# - ufw:   {cfg.out_ufw}", file=sys.stderr)
-    print("# Press Ctrl+C to stop.", file=sys.stderr)
-
-    next_emit = time.monotonic()
+    print("# Synthetic log generator (no LLM)")
+    print("# Writing logs to:")
+    print(f"# - nginx: {cfg.out_nginx}")
+    print(f"# - api:   {cfg.out_api}")
+    print(f"# - ufw:   {cfg.out_ufw}")
+    print("# Press Ctrl+C to stop.")
 
     try:
         while True:
@@ -521,14 +449,9 @@ def main() -> int:
                 append_lines(cfg.out_api, outputs.get("api", []))
                 append_lines(cfg.out_ufw, outputs.get("ufw", []))
 
-            # pace to every batch_interval_s (default 10s)
             if cfg.batch_interval_s > 0:
-                next_emit += cfg.batch_interval_s
-                sleep_for = max(0.0, next_emit - time.monotonic())
-                if sleep_for > 0:
-                    time.sleep(sleep_for)
-            elif cfg.sleep_s > 0:
-                time.sleep(cfg.sleep_s)
+                time.sleep(cfg.batch_interval_s)
+
     except KeyboardInterrupt:
         print("\n# Stopped.", file=sys.stderr)
         return 0

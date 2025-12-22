@@ -6,43 +6,11 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
-
+from utils import datetime_to_iso_utc, rand_public_ip
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
-
-
-def iso_z(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def rand_public_ip(rng: random.Random) -> str:
-    while True:
-        a = rng.randint(11, 223)
-        b = rng.randint(0, 255)
-        c = rng.randint(0, 255)
-        d = rng.randint(1, 254)
-        if a in (10, 127) or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168) or (a == 169 and b == 254):
-            continue
-        if a >= 224:
-            continue
-        return f"{a}.{b}.{c}.{d}"
-
-
-def weighted_choice(rng: random.Random, items: List[str], weights: List[float]) -> str:
-    x = rng.random() * sum(weights)
-    acc = 0.0
-    for item, w in zip(items, weights):
-        acc += w
-        if x <= acc:
-            return item
-    return items[-1]
-
-
-# ----------------------------
-# Scenarios + prompts
-# ----------------------------
 
 @dataclass
 class Config:
@@ -64,12 +32,10 @@ class Config:
     )
     seed: Optional[int] = 7
     temperature: float = 0.2
-    max_tokens: int = 2000
     sleep_s: float = 0.0
     out_nginx: Optional[str] = "nginx_access.log"
     out_api: Optional[str] = "api_app.log"
     out_ufw: Optional[str] = "fw_ufw.log"
-    print_stdout: bool = True
     scenarios: List[str] = field(
         default_factory=lambda: ["healthy", "port_scan", "bruteforce", "ddos", "api_enum"]
     )
@@ -121,8 +87,8 @@ def build_context(rng: random.Random, start: datetime, end: datetime) -> Dict[st
         "statuses": [str(x) for x in statuses],
         "uas": uas,
         "referers": referers,
-        "start": iso_z(start),
-        "end": iso_z(end),
+        "start": datetime_to_iso_utc(start),
+        "end": datetime_to_iso_utc(end),
     }
 
 
@@ -190,7 +156,7 @@ Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Each line MUST be a valid UFW/iptables-style firewall block log line.
 - Hostname: {cfg.hostname}
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
 - Timestamps must be syslog style like "Dec 17 12:00:00".
 - Attacker SRC must be CONSTANT across the batch: SRC={attacker_ip}
 - Target must be CONSTANT across the batch: DST={cfg.target_ip}
@@ -202,7 +168,6 @@ Now output the {cfg.lines_per_batch} firewall log lines:
 
 
 def build_prompt_ufw_normal(cfg: Config, rng: random.Random, start: datetime, end: datetime, ctx: Dict[str, List[str]]) -> str:
-    # Encourage reuse of client IPs already used by nginx/app traffic.
     src_pool = ctx.get("client_ips", [])
     if not src_pool:
         src_pool = [rand_public_ip(rng) for _ in range(4)]
@@ -217,7 +182,7 @@ Scenario: HEALTHY traffic (mostly allowed), occasional harmless noise.
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
 - Use SRC addresses drawn from: {", ".join(src_pool)}
 - DST must be {cfg.target_ip} for inbound entries.
 - Majority of lines should be "[UFW ALLOW]" for expected inbound web ports (80, 443, 8080) or outbound DNS/HTTPS.
@@ -238,7 +203,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC +0000).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC +0000).
 - Attacker IP must dominate: {attacker_ip}; mix in a few normal IPs from: {", ".join(ctx.get("client_ips", []))}
 - Paths should target login endpoints (/login, /auth, /api/v1/login) with many 401/403 and a few 200 after retries.
 - Methods mostly POST (some GET).
@@ -258,7 +223,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}].
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}].
 - Most lines should be 401/403 login failures from ip={attacker_ip}, few 200 when captcha/rate-limit passes.
 - Paths: /login, /auth, /api/v1/login; methods POST with latency_ms 50-400.
 - user can be "-", "unknown", or guessed usernames; msg like "auth failed", "rate limited", "password invalid".
@@ -281,7 +246,7 @@ Scenario: BRUTE FORCE against SSH.
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
 - SRC must be CONSTANT: SRC={attacker_ip}
 - DST must be CONSTANT: DST={cfg.target_ip}
 - Mostly TCP SYN to DPT in {", ".join(map(str, ports))}; all BLOCK.
@@ -300,7 +265,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC +0000).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC +0000).
 - Use many repeated requests from bot IPs: {", ".join(bot_ips)} hitting "/" "/health" "/static" "/api/v1/items".
 - Include elevated 429/503/504 plus some 200s.
 - Methods mostly GET; keep combined format valid; Referer "-" or empty.
@@ -318,7 +283,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}].
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}].
 - IPs should be from: {", ".join(bot_ips)} with many rapid repeats.
 - Paths: "/", "/health", "/api/v1/items", "/static/app.js".
 - Mix 200 with 429/503; latency_ms can spike (200-1200ms).
@@ -339,7 +304,7 @@ Scenario: DDoS mitigation on web ports.
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
 - Use SRC drawn from: {", ".join(bot_ips)}
 - DST must be {cfg.target_ip}
 - Mix BLOCK and ALLOW on PROTO=TCP to DPT=80/443/8080, some UDP noise allowed.
@@ -358,7 +323,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC +0000).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC +0000).
 - Majority of requests from robot IP {robot_ip}; few normal hits from ctx IPs allowed.
 - Paths should probe many endpoints (/admin, /debug, /api/v1/secret, /wp-login.php, /.git/HEAD, /robots.txt, /config).
 - Status mix: mostly 404/401/403 with some 200/301.
@@ -377,7 +342,7 @@ Output ONLY raw log lines, no code fences, no explanations, no JSON.
 
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
-- Time window: [{iso_z(start)} , {iso_z(end)}].
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}].
 - Requests mainly from ip={robot_ip} probing uncommon paths; include 404/401/403, some 200/301.
 - Methods: GET with occasional POST; latency_ms 30-400.
 - user mostly "-" ; msg like "route not found", "auth required", "blocked", "ok".
@@ -398,7 +363,7 @@ Scenario: robot probing APIs.
 Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
-- Time window: [{iso_z(start)} , {iso_z(end)}] (UTC).
+- Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
 - SRC should be {robot_ip}; DST {cfg.target_ip}; PROTO mostly TCP.
 - Mostly ALLOW to DPT {", ".join(map(str, ports))} with 1-2 BLOCK entries for odd ports or UDP probes.
 - Keep format valid with SRC/DST/PROTO/SPT/DPT present.
@@ -442,9 +407,6 @@ def regex_match_lines(lines: List[str], pattern: re.Pattern[str]) -> bool:
     return all(pattern.match(ln) for ln in lines)
 
 
-# ----------------------------
-# LangGraph workflow
-# ----------------------------
 
 def build_graph(llm: ChatOpenAI, rng: random.Random):
     graph = StateGraph(dict)
@@ -518,21 +480,13 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
 
         return {**state, "errors": errors}
 
-    def fan_out(state: dict) -> dict:
+    def write_logs(state: dict) -> dict:
         errors: List[str] = state.get("errors", [])
         outputs: Dict[str, List[str]] = state.get("outputs", {})
 
         if errors:
             print(f"# Skipping batch due to errors: {errors}", file=sys.stderr)
             return state
-
-        if cfg.print_stdout:
-            if "nginx" in outputs:
-                print_lines("nginx", outputs["nginx"])
-            if "api" in outputs:
-                print_lines("api", outputs["api"])
-            if "ufw" in outputs:
-                print_lines("ufw", outputs["ufw"])
 
         append_lines(cfg.out_nginx, outputs.get("nginx", []))
         append_lines(cfg.out_api, outputs.get("api", []))
@@ -543,7 +497,7 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
     graph.add_node("prompts", build_prompts)
     graph.add_node("generate", generate)
     graph.add_node("validate", validate)
-    graph.add_node("write", fan_out)
+    graph.add_node("write", write_logs)
 
     graph.set_entry_point("select")
     graph.add_edge("select", "prompts")
@@ -555,10 +509,6 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
     return graph.compile()
 
 
-# ----------------------------
-# Main
-# ----------------------------
-
 def main() -> int:
     rng = random.Random(cfg.seed)
 
@@ -567,18 +517,17 @@ def main() -> int:
         base_url=cfg.base_url,
         api_key=cfg.api_key,
         temperature=cfg.temperature,
-        max_tokens=cfg.max_tokens,
     )
 
     app = build_graph(llm, rng)
 
     sim_t = datetime.now(timezone.utc)
-    print(f"# Starting (model={cfg.model}, base_url={cfg.base_url})", file=sys.stderr)
-    print("# Writing logs to:", file=sys.stderr)
-    print(f"# - nginx: {cfg.out_nginx}", file=sys.stderr)
-    print(f"# - api:   {cfg.out_api}", file=sys.stderr)
-    print(f"# - ufw:   {cfg.out_ufw}", file=sys.stderr)
-    print("# Press Ctrl+C to stop.", file=sys.stderr)
+    print(f"# Starting (model={cfg.model}, base_url={cfg.base_url})")
+    print("# Writing logs to:")
+    print(f"# - nginx: {cfg.out_nginx}")
+    print(f"# - api:   {cfg.out_api}")
+    print(f"# - ufw:   {cfg.out_ufw}")
+    print("# Press Ctrl+C to stop.")
 
     try:
         while True:
@@ -588,7 +537,7 @@ def main() -> int:
             if cfg.sleep_s > 0:
                 time.sleep(cfg.sleep_s)
     except KeyboardInterrupt:
-        print("\n# Stopped.", file=sys.stderr)
+        print("\n# Stopped.")
         return 0
 
 
