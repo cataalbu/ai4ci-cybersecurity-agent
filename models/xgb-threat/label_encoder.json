@@ -1,0 +1,9 @@
+{
+  "classes": [
+    "api_enum",
+    "bruteforce",
+    "ddos",
+    "healthy",
+    "port_scan"
+  ]
+}

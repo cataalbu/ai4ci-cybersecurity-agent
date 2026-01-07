@@ -1,0 +1,287 @@
+{
+  "window_seconds": 15,
+  "feature_columns": [
+    "nginx_req_count",
+    "nginx_unique_client_ips",
+    "nginx_unique_paths",
+    "nginx_2xx",
+    "nginx_3xx",
+    "nginx_4xx",
+    "nginx_5xx",
+    "nginx_4xx_rate",
+    "nginx_5xx_rate",
+    "nginx_top_path_count",
+    "api_req_count",
+    "api_unique_ips",
+    "api_unique_users",
+    "api_warn_count",
+    "api_error_count",
+    "api_latency_p50",
+    "api_latency_p95",
+    "api_latency_max",
+    "api_4xx",
+    "api_5xx",
+    "api_4xx_rate",
+    "api_5xx_rate",
+    "api_login_fail_count",
+    "ufw_event_count",
+    "ufw_allow_count",
+    "ufw_block_count",
+    "ufw_block_rate",
+    "ufw_unique_src_ips",
+    "ufw_unique_dpt",
+    "ufw_tcp_count",
+    "ufw_udp_count",
+    "ufw_top_dpt_count",
+    "total_event_count",
+    "unique_total_ips",
+    "has_nginx",
+    "has_api",
+    "has_ufw"
+  ],
+  "feature_checksum": "9c5238a085397b4b371fefe333e7fb6f04a2ce36b103e593a5d33f7f25615f84",
+  "class_counts": {
+    "train": {
+      "healthy": 40,
+      "port_scan": 29,
+      "api_enum": 15,
+      "ddos": 15,
+      "bruteforce": 14
+    },
+    "val": {
+      "healthy": 32,
+      "port_scan": 9,
+      "bruteforce": 8,
+      "api_enum": 6,
+      "ddos": 6
+    },
+    "test": {
+      "healthy": 50,
+      "port_scan": 8,
+      "bruteforce": 6,
+      "ddos": 6,
+      "api_enum": 2
+    }
+  },
+  "hyperparams": {
+    "objective": "multi:softprob",
+    "base_score": null,
+    "booster": null,
+    "callbacks": null,
+    "colsample_bylevel": null,
+    "colsample_bynode": null,
+    "colsample_bytree": 0.8,
+    "device": null,
+    "early_stopping_rounds": 25,
+    "enable_categorical": false,
+    "eval_metric": "mlogloss",
+    "feature_types": null,
+    "feature_weights": null,
+    "gamma": null,
+    "grow_policy": null,
+    "importance_type": null,
+    "interaction_constraints": null,
+    "learning_rate": 0.05,
+    "max_bin": null,
+    "max_cat_threshold": null,
+    "max_cat_to_onehot": null,
+    "max_delta_step": null,
+    "max_depth": 6,
+    "max_leaves": null,
+    "min_child_weight": 1.0,
+    "missing": NaN,
+    "monotone_constraints": null,
+    "multi_strategy": null,
+    "n_estimators": 500,
+    "n_jobs": null,
+    "num_parallel_tree": null,
+    "random_state": null,
+    "reg_alpha": null,
+    "reg_lambda": 1.0,
+    "sampling_method": null,
+    "scale_pos_weight": null,
+    "subsample": 0.8,
+    "tree_method": "hist",
+    "validate_parameters": null,
+    "verbosity": null
+  },
+  "xgboost_version": "3.1.2",
+  "python_version": "3.13.11 (main, Dec 12 2025, 09:10:17) [Clang 17.0.0 (clang-1700.0.13.5)]",
+  "data_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "metrics": {
+    "train": {
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "balanced_accuracy": 1.0,
+      "confusion_matrix": [
+        [
+          15,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          14,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          15,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          40,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          29
+        ]
+      ],
+      "per_class_f1": {
+        "api_enum": 1.0,
+        "bruteforce": 1.0,
+        "ddos": 1.0,
+        "healthy": 1.0,
+        "port_scan": 1.0
+      },
+      "support": {
+        "api_enum": 15,
+        "bruteforce": 14,
+        "ddos": 15,
+        "healthy": 40,
+        "port_scan": 29
+      },
+      "top_1_accuracy": 1.0,
+      "top_3_accuracy": 1.0
+    },
+    "val": {
+      "accuracy": 0.9508196721311475,
+      "macro_f1": 0.9439892344497608,
+      "balanced_accuracy": 0.9381944444444444,
+      "confusion_matrix": [
+        [
+          5,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          8,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          6,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          31,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          8
+        ]
+      ],
+      "per_class_f1": {
+        "api_enum": 0.9090909090909091,
+        "bruteforce": 1.0,
+        "ddos": 1.0,
+        "healthy": 0.96875,
+        "port_scan": 0.8421052631578947
+      },
+      "support": {
+        "api_enum": 6,
+        "bruteforce": 8,
+        "ddos": 6,
+        "healthy": 32,
+        "port_scan": 9
+      },
+      "top_1_accuracy": 0.9508196721311475,
+      "top_3_accuracy": 1.0
+    },
+    "test": {
+      "accuracy": 0.8611111111111112,
+      "macro_f1": 0.8430735930735931,
+      "balanced_accuracy": 0.8593333333333334,
+      "confusion_matrix": [
+        [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          4,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          44,
+          6
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          6
+        ]
+      ],
+      "per_class_f1": {
+        "api_enum": 1.0,
+        "bruteforce": 1.0,
+        "ddos": 0.7272727272727273,
+        "healthy": 0.9166666666666666,
+        "port_scan": 0.5714285714285714
+      },
+      "support": {
+        "api_enum": 2,
+        "bruteforce": 6,
+        "ddos": 6,
+        "healthy": 50,
+        "port_scan": 8
+      },
+      "top_1_accuracy": 0.8611111111111112,
+      "top_3_accuracy": 0.9861111111111112
+    }
+  }
+}
