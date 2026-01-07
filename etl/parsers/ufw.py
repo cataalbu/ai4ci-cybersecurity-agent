@@ -16,17 +16,21 @@ LOG_PATTERN = re.compile(
 
 
 def _build_timestamp(month: str, day: str, time_str: str) -> datetime:
-    """Construct timezone-aware timestamp; inject current year and adjust to UTC."""
-    now = datetime.now().astimezone()
+    """
+    Construct timezone-aware timestamp; inject current year and keep in UTC
+    without applying local offset. This aligns UFW timestamps with nginx/API
+    logs that already carry UTC offsets.
+    """
+    now_utc = datetime.now(timezone.utc)
     candidate = datetime.strptime(
-        f"{now.year} {month} {int(day):02d} {time_str}", "%Y %b %d %H:%M:%S"
-    ).replace(tzinfo=now.tzinfo)
+        f"{now_utc.year} {month} {int(day):02d} {time_str}", "%Y %b %d %H:%M:%S"
+    ).replace(tzinfo=timezone.utc)
 
     # Handle year rollover (e.g., January parsing December logs)
-    if candidate - now > timedelta(days=1):
-        candidate = candidate.replace(year=now.year - 1)
+    if candidate - now_utc > timedelta(days=1):
+        candidate = candidate.replace(year=now_utc.year - 1)
 
-    return candidate.astimezone(timezone.utc)
+    return candidate
 
 
 def parse_line(line: str) -> NormalizedRecord:

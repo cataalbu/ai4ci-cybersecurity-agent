@@ -22,16 +22,16 @@ class Config:
     hostname: str = "web-1"
     target_ip: str = "203.0.113.20"
     lines_per_batch: int = 10
-    window_ms: int = 30000  # 30 seconds
+    window_ms: int = 15000  # 15 seconds
 
     # Train-only default: healthy only
     scenario_weights: Dict[str, float] = field(
         default_factory=lambda: {
-            "healthy": 1,
-            "port_scan": 0,
-            "bruteforce": 0,
-            "ddos": 0,
-            "api_enum": 0,
+            "healthy": 0.2,
+            "port_scan": 0.25,
+            "bruteforce": 0.15,
+            "ddos": 0.25,
+            "api_enum": 0.15,
         }
     )
 
@@ -48,7 +48,7 @@ class Config:
     out_ufw: Optional[str] = "./logs/fw_ufw.log"
 
     # ✅ NEW: if True, write labels/metadata sidecar for evaluation
-    evaluation: bool = False
+    evaluation: bool = True
     out_manifest: Optional[str] = "./logs/manifest.jsonl"
 
 
