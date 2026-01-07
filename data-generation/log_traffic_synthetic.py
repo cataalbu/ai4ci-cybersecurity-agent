@@ -30,10 +30,11 @@ def format_api_line(
     latency_ms: int,
     user: str,
     msg: str,
+    level: str = "INFO",
 ) -> str:
     safe_msg = msg.replace('"', "'")
     return (
-        f"{datetime_to_iso_utc(dt)} level=INFO ip={ip} method={method} path={path} "
+        f"{datetime_to_iso_utc(dt)} level={level} ip={ip} method={method} path={path} "
         f"status={status} latency_ms={latency_ms} user={user} msg=\"{safe_msg}\""
     )
 
@@ -75,9 +76,9 @@ class Config:
     seed: Optional[int] = 7
     sleep_s: float = 0.0
     batch_interval_s: float = 10.0
-    out_nginx: Optional[str] = "nginx_access_nonllm.log"
-    out_api: Optional[str] = "api_app_nonllm.log"
-    out_ufw: Optional[str] = "fw_ufw_nonllm.log"
+    out_nginx: Optional[str] = "./logs/nginx_access.log"
+    out_api: Optional[str] = "./logs/api_app.log"
+    out_ufw: Optional[str] = "./logs/fw_ufw.log"
     print_stdout: bool = True
     scenarios: List[str] = field(
         default_factory=lambda: ["healthy", "port_scan", "bruteforce", "ddos", "api_enum"]
@@ -121,6 +122,8 @@ def gen_nginx_healthy(cfg: Config, rng: random.Random, start: datetime, end: dat
         ip = rng.choice(ctx["client_ips"])
         method = rng.choice(ctx["methods"])
         path = rng.choice(ctx["paths"])
+        if path.startswith("/static") or path == "/favicon.ico":
+            method = "GET"
         status = rng.choice([200, 200, 200, 200, 301, 302, 400, 404, 500])
         bytes_sent = rng.randint(200, 3000)
         referer = rng.choice(ctx["referers"])
@@ -139,11 +142,14 @@ def gen_api_healthy(cfg: Config, rng: random.Random, start: datetime, end: datet
         ip = rng.choice(ctx["client_ips"])
         method = rng.choice(ctx["methods"])
         path = rng.choice(ctx["paths"])
+        if path.startswith("/static") or path == "/favicon.ico":
+            method = "GET"
         status = rng.choice([200, 200, 200, 200, 200, 204, 301, 400, 401, 404, 500])
         latency = rng.randint(20, 800)
         user = rng.choice(users)
         msg = rng.choice(msgs)
-        lines.append(format_api_line(dt, ip, method, path, status, latency, user, msg))
+        level = "ERROR" if status >= 500 else "WARN" if status in (400, 401, 404) or latency > 700 else "INFO"
+        lines.append(format_api_line(dt, ip, method, path, status, latency, user, msg, level))
     return lines
 
 
@@ -230,7 +236,8 @@ def gen_bruteforce(cfg: Config, rng: random.Random, start: datetime, end: dateti
         latency = rng.randint(50, 400)
         user = rng.choice(["-", "unknown", "admin", "root"])
         msg = "auth failed" if status != 200 else "login ok"
-        api_lines.append(format_api_line(dt, ip, method, path, status, latency, user, msg))
+        level = "ERROR" if status >= 500 else "WARN" if status in (401, 403) else "INFO"
+        api_lines.append(format_api_line(dt, ip, method, path, status, latency, user, msg, level))
 
     # ufw
     ssh_ports = [22, 2222, 2022] + sorted({rng.randint(2000, 6000) for _ in range(3)})
@@ -263,6 +270,8 @@ def gen_ddos(cfg: Config, rng: random.Random, start: datetime, end: datetime, ct
         ip = rng.choice(bot_ips)
         method = "GET"
         path = rng.choice(paths)
+        if path.startswith("/static"):
+            method = "GET"
         status = rng.choice([200, 200, 200, 429, 503, 504])
         bytes_sent = rng.randint(100, 2000)
         nginx_lines.append(format_nginx_line(dt, ip, method, path, status, bytes_sent, "-", "masscan/1.0"))
@@ -275,7 +284,8 @@ def gen_ddos(cfg: Config, rng: random.Random, start: datetime, end: datetime, ct
         status = rng.choice([200, 200, 429, 503])
         latency = rng.randint(200, 1200)
         msg = rng.choice(["ok", "rate limited", "overload", "queue full"])
-        api_lines.append(format_api_line(dt, ip, "GET", path, status, latency, "-", msg))
+        level = "ERROR" if status >= 500 else "WARN" if status == 429 or latency > 900 else "INFO"
+        api_lines.append(format_api_line(dt, ip, "GET", path, status, latency, "-", msg, level))
 
     ufw_lines = []
     for _ in range(attack_count):
@@ -332,7 +342,8 @@ def gen_api_enum(cfg: Config, rng: random.Random, start: datetime, end: datetime
         status = rng.choice([404, 401, 403, 200, 301])
         latency = rng.randint(30, 400)
         msg = rng.choice(["route not found", "auth required", "blocked", "ok"])
-        api_lines.append(format_api_line(dt, ip, "GET", path, status, latency, "-", msg))
+        level = "ERROR" if status >= 500 else "WARN" if status in (401, 403, 404) else "INFO"
+        api_lines.append(format_api_line(dt, ip, "GET", path, status, latency, "-", msg, level))
 
     ufw_lines = []
     ports = [80, 443, 8080, rng.randint(10000, 65000)]
@@ -376,8 +387,8 @@ def regex_match_lines(lines: List[str], pattern: re.Pattern[str]) -> bool:
 def validate_outputs(outputs: Dict[str, List[str]], expected: int) -> List[str]:
     errors: List[str] = []
     nginx_pat = re.compile(r'.+"[A-Z]+ .+ HTTP/.+" \d{3} \d+ .+')
-    api_pat = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z level=INFO .*")
-    ufw_pat = re.compile(r"[A-Z][a-z]{2} \d{1,2} .*\[UFW (BLOCK|ALLOW)\].*SRC=.*DST=.*PROTO=.*DPT=.*")
+    api_pat = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z level=(INFO|WARN|ERROR) .*")
+    ufw_pat = re.compile(r"[A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2} .*\[UFW (BLOCK|ALLOW)\].*SRC=.*DST=.*PROTO=.*DPT=.*")
 
     for name, lines in outputs.items():
         if len(lines) != expected:

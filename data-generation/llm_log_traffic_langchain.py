@@ -3,10 +3,12 @@ import random
 import re
 import sys
 import time
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
-from utils import datetime_to_iso_utc, rand_public_ip
+
+from utils import datetime_to_iso_utc, rand_public_ip, weighted_choice
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
@@ -20,25 +22,34 @@ class Config:
     hostname: str = "web-1"
     target_ip: str = "203.0.113.20"
     lines_per_batch: int = 10
-    window_ms: int = 1000
+    window_ms: int = 30000  # 30 seconds
+
+    # Train-only default: healthy only
     scenario_weights: Dict[str, float] = field(
         default_factory=lambda: {
-            "healthy": 0.45,
-            "port_scan": 0.2,
-            "bruteforce": 0.15,
-            "ddos": 0.1,
-            "api_enum": 0.1,
+            "healthy": 1,
+            "port_scan": 0,
+            "bruteforce": 0,
+            "ddos": 0,
+            "api_enum": 0,
         }
     )
-    seed: Optional[int] = 7
-    temperature: float = 0.2
-    sleep_s: float = 0.0
-    out_nginx: Optional[str] = "nginx_access.log"
-    out_api: Optional[str] = "api_app.log"
-    out_ufw: Optional[str] = "fw_ufw.log"
+
     scenarios: List[str] = field(
         default_factory=lambda: ["healthy", "port_scan", "bruteforce", "ddos", "api_enum"]
     )
+
+    seed: Optional[int] = 7
+    temperature: float = 0.2
+    sleep_s: float = 0.0
+
+    out_nginx: Optional[str] = "./logs/nginx_access.log"
+    out_api: Optional[str] = "./logs/api_app.log"
+    out_ufw: Optional[str] = "./logs/fw_ufw.log"
+
+    # ✅ NEW: if True, write labels/metadata sidecar for evaluation
+    evaluation: bool = False
+    out_manifest: Optional[str] = "./logs/manifest.jsonl"
 
 
 cfg = Config()
@@ -53,7 +64,7 @@ NGINX_FORMAT_SPEC = (
 
 API_FORMAT_SPEC = (
     "Backend app log format (plain text, one line per request):\n"
-    "  <iso8601_z> level=INFO ip=... method=... path=... status=... latency_ms=... user=... msg=\"...\"\n"
+    "  <iso8601_z> level=INFO|WARN|ERROR ip=... method=... path=... status=... latency_ms=... user=... msg=\"...\"\n"
     "Example:\n"
     '  2025-12-17T12:00:00.123Z level=INFO ip=203.0.113.9 method=GET path=/api/v1/items status=200 latency_ms=123 user=alice msg="ok"\n'
 )
@@ -112,6 +123,7 @@ Constraints:
   - User-Agents (sample): {", ".join(ctx["uas"])}
   - Referers (sample): {", ".join(ctx["referers"])}
 - Include a small amount of 4xx/5xx but mostly healthy traffic.
+- Static assets (/static/*, /favicon.ico) must be GET only (no POST).
 
 Now output the {cfg.lines_per_batch} log lines:
 """.strip()
@@ -132,6 +144,7 @@ Constraints:
 - latency_ms should be plausible (20-800ms) and align with path complexity.
 - user can be "-", "alice", "bob", "service-account", or similar.
 - msg should be short human-readable notes like "ok", "cache hit", "auth failed", "validation error".
+- level should be mostly INFO with occasional WARN/ERROR for 4xx/5xx or slow responses.
 
 Now output the {cfg.lines_per_batch} log lines:
 """.strip()
@@ -157,9 +170,9 @@ Constraints:
 - Each line MUST be a valid UFW/iptables-style firewall block log line.
 - Hostname: {cfg.hostname}
 - Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
-- Timestamps must be syslog style like "Dec 17 12:00:00".
+- Timestamps must be syslog style like "Dec 17 12:00:00" (no milliseconds).
 - Attacker SRC must be CONSTANT across the batch: SRC={attacker_ip}
-- Target must be CONSTANT across the batch: DST={cfg.target_ip}
+- Target must be CONSTANT across the batch: DST must be exactly {cfg.target_ip}
 - PROTO should be mostly TCP with SYN set, and a few UDP probes are allowed.
 - DPT must vary widely (port scan behavior). Use these many times, but feel free to add more: {", ".join(map(str, ports))}.
 
@@ -183,8 +196,9 @@ Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
 - Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
+- Timestamps must be syslog style like "Jan 07 08:52:09" (no milliseconds).
 - Use SRC addresses drawn from: {", ".join(src_pool)}
-- DST must be {cfg.target_ip} for inbound entries.
+- DST must be exactly {cfg.target_ip} for inbound entries.
 - Majority of lines should be "[UFW ALLOW]" for expected inbound web ports (80, 443, 8080) or outbound DNS/HTTPS.
 - Include 1-2 "[UFW BLOCK]" noise entries (e.g., unexpected ports or UDP probe) but keep overall tone healthy.
 - For outbound DNS/HTTPS you may flip IN/OUT accordingly, but keep SRC/DST realistic.
@@ -247,8 +261,9 @@ Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
 - Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
+- Timestamps must be syslog style like "Jan 07 08:52:09" (no milliseconds).
 - SRC must be CONSTANT: SRC={attacker_ip}
-- DST must be CONSTANT: DST={cfg.target_ip}
+- DST must be CONSTANT: DST must be exactly {cfg.target_ip}
 - Mostly TCP SYN to DPT in {", ".join(map(str, ports))}; all BLOCK.
 - SPT can vary in a small range to mimic retries.
 
@@ -305,8 +320,9 @@ Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
 - Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
+- Timestamps must be syslog style like "Jan 07 08:52:09" (no milliseconds).
 - Use SRC drawn from: {", ".join(bot_ips)}
-- DST must be {cfg.target_ip}
+- DST must be exactly {cfg.target_ip}
 - Mix BLOCK and ALLOW on PROTO=TCP to DPT=80/443/8080, some UDP noise allowed.
 - Keep SPT varied; include SYN for TCP.
 
@@ -364,6 +380,7 @@ Constraints:
 - Produce EXACTLY {cfg.lines_per_batch} lines.
 - Hostname: {cfg.hostname}
 - Time window: [{datetime_to_iso_utc(start)} , {datetime_to_iso_utc(end)}] (UTC).
+- Timestamps must be syslog style like "Jan 07 08:52:09" (no milliseconds).
 - SRC should be {robot_ip}; DST {cfg.target_ip}; PROTO mostly TCP.
 - Mostly ALLOW to DPT {", ".join(map(str, ports))} with 1-2 BLOCK entries for odd ports or UDP probes.
 - Keep format valid with SRC/DST/PROTO/SPT/DPT present.
@@ -384,16 +401,25 @@ def llm_generate_lines(llm: ChatOpenAI, prompt: str) -> List[str]:
         ]
     )
     text = (msg.content or "").strip()
-    lines = [ln.rstrip("\n") for ln in text.splitlines() if ln.strip() != ""]
-    return lines
+    return [ln.rstrip("\n") for ln in text.splitlines() if ln.strip() != ""]
 
 
 def append_lines(out_file: Optional[str], lines: List[str]) -> None:
     if not out_file:
         return
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
     with open(out_file, "a", encoding="utf-8") as f:
         for ln in lines:
             f.write(ln + "\n")
+
+
+def append_manifest(cfg: Config, record: dict) -> None:
+    """Writes labels/metadata per window ONLY when cfg.evaluation=True."""
+    if not cfg.evaluation or not cfg.out_manifest:
+        return
+    os.makedirs(os.path.dirname(cfg.out_manifest) or ".", exist_ok=True)
+    with open(cfg.out_manifest, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def print_lines(label: str, lines: List[str]) -> None:
@@ -407,6 +433,22 @@ def regex_match_lines(lines: List[str], pattern: re.Pattern[str]) -> bool:
     return all(pattern.match(ln) for ln in lines)
 
 
+IPV4_RE = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
+
+
+def normalize_ufw_line(line: str) -> str:
+    """Fix common UFW realism issues: drop milliseconds and enforce target DST."""
+    fixed_ts = re.sub(r"^([A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2})\.\d+", r"\1", line)
+    if cfg.target_ip and "DST=" in fixed_ts:
+        # replace invalid/non-matching DST with target_ip
+        dst_match = re.search(r"DST=([^\s]+)", fixed_ts)
+        if not dst_match:
+            return fixed_ts
+        dst_val = dst_match.group(1)
+        if dst_val != cfg.target_ip or not IPV4_RE.fullmatch(dst_val):
+            fixed_ts = re.sub(r"DST=[^\s]+", f"DST={cfg.target_ip}", fixed_ts)
+    return fixed_ts
+
 
 def build_graph(llm: ChatOpenAI, rng: random.Random):
     graph = StateGraph(dict)
@@ -416,14 +458,17 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
         if sum(weights) <= 0:
             weights = [1.0 for _ in cfg.scenarios]
         scenario = weighted_choice(rng, cfg.scenarios, weights)
+
         start = state["sim_t"]
         end = start + timedelta(milliseconds=cfg.window_ms)
         ctx = build_context(rng, start, end)
+
         return {**state, "scenario": scenario, "start": start, "end": end, "context": ctx}
 
     def build_prompts(state: dict) -> dict:
         scenario = state["scenario"]
         prompts: Dict[str, str] = {}
+
         if scenario == "healthy":
             prompts["nginx"] = build_prompt_nginx(cfg, state["context"])
             prompts["api"] = build_prompt_api(cfg, state["context"])
@@ -445,15 +490,20 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
             prompts["nginx"] = build_prompt_nginx_api_enum(cfg, state["context"], state["start"], state["end"], robot_ip)
             prompts["api"] = build_prompt_api_api_enum(cfg, state["context"], state["start"], state["end"], robot_ip)
             prompts["ufw"] = build_prompt_ufw_api_enum(cfg, rng, state["start"], state["end"], robot_ip)
+
         return {**state, "prompts": prompts}
 
     def generate(state: dict) -> dict:
         outputs: Dict[str, List[str]] = {}
         errors: List[str] = []
+
         for name, prompt in state.get("prompts", {}).items():
             try:
-                outputs[name] = llm_generate_lines(llm, prompt)
-            except Exception as exc:  # pragma: no cover - runtime safety
+                lines = llm_generate_lines(llm, prompt)
+                if name == "ufw":
+                    lines = [normalize_ufw_line(ln) for ln in lines]
+                outputs[name] = lines
+            except Exception as exc:  # pragma: no cover
                 errors.append(f"{name}: LLM error {exc}")
 
         return {**state, "outputs": outputs, "errors": errors}
@@ -464,8 +514,8 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
         expected = cfg.lines_per_batch
 
         nginx_pat = re.compile(r'.+"[A-Z]+ .+ HTTP/.+" \d{3} \d+ .+')
-        api_pat = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z level=INFO .*")
-        ufw_pat = re.compile(r"[A-Z][a-z]{2} \d{1,2} .*\[UFW (BLOCK|ALLOW)\].*SRC=.*DST=.*PROTO=.*DPT=.*")
+        api_pat = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z level=(INFO|WARN|ERROR) .*")
+        ufw_pat = re.compile(r"[A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2} .*\[UFW (BLOCK|ALLOW)\].*SRC=.*DST=.*PROTO=.*DPT=.*")
 
         for name, lines in outputs.items():
             if len(lines) != expected:
@@ -491,6 +541,18 @@ def build_graph(llm: ChatOpenAI, rng: random.Random):
         append_lines(cfg.out_nginx, outputs.get("nginx", []))
         append_lines(cfg.out_api, outputs.get("api", []))
         append_lines(cfg.out_ufw, outputs.get("ufw", []))
+
+        # ✅ Write labels/metadata per window (sidecar), only when evaluation=True
+        append_manifest(
+            cfg,
+            {
+                "window_start": datetime_to_iso_utc(state["start"]),
+                "window_end": datetime_to_iso_utc(state["end"]),
+                "scenario": state["scenario"],
+                "is_attack": int(state["scenario"] != "healthy"),
+            },
+        )
+
         return state
 
     graph.add_node("select", select_scenario)
@@ -527,6 +589,8 @@ def main() -> int:
     print(f"# - nginx: {cfg.out_nginx}")
     print(f"# - api:   {cfg.out_api}")
     print(f"# - ufw:   {cfg.out_ufw}")
+    if cfg.evaluation:
+        print(f"# - manifest: {cfg.out_manifest}")
     print("# Press Ctrl+C to stop.")
 
     try:
