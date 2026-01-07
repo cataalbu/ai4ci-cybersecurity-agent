@@ -10,6 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -147,6 +149,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
+
+# Threat intel (AbuseIPDB)
+ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY")
+ABUSEIPDB_BASE_URL = os.getenv("ABUSEIPDB_BASE_URL", "https://api.abuseipdb.com/api/v2")
+ABUSEIPDB_MAX_AGE_DAYS = int(os.getenv("ABUSEIPDB_MAX_AGE_DAYS", "90"))
+ABUSEIPDB_TIMEOUT_SECONDS = int(os.getenv("ABUSEIPDB_TIMEOUT_SECONDS", "5"))
+ABUSEIPDB_CACHE_TTL_SECONDS = int(os.getenv("ABUSEIPDB_CACHE_TTL_SECONDS", "86400"))
+ABUSEIPDB_RETRIES = int(os.getenv("ABUSEIPDB_RETRIES", "2"))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
