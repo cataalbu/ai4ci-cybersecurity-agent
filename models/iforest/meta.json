@@ -1,6 +1,6 @@
 {
   "window_seconds": 60,
-  "threshold": 0.5941292721002552,
+  "threshold": 0.6083568570752745,
   "threshold_percentile": 98.5,
   "feature_columns": [
     "nginx_req_count",

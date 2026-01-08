@@ -26,14 +26,22 @@ def run_etl(
     api_path: str | None = None,
     ufw_path: str | None = None,
     out_path: str = "./data/events.parquet",
+    skip_disk_write: bool = False,
 ) -> dict:
     """
     Parse provided log files, normalize records, and write output.
 
+    Args:
+        nginx_path: Path to nginx access log file
+        api_path: Path to API application log file
+        ufw_path: Path to UFW firewall log file
+        out_path: Output file path (used only if skip_disk_write=False)
+        skip_disk_write: If True, skip writing to disk and return records in memory only
+
     Returns a dict with keys:
       - records: list of NormalizedRecord
       - summaries: list of FileSummary
-      - output_path: final output path (parquet or csv)
+      - output_path: final output path (parquet or csv), or None if skip_disk_write=True
       - total_rows: number of emitted rows
     """
     all_record_chunks: List[List[NormalizedRecord]] = []
@@ -53,7 +61,11 @@ def run_etl(
         summaries.append(summary)
 
     records = flatten(all_record_chunks)
-    output_path = write_output(records, out_path)
+    
+    if skip_disk_write:
+        output_path = None
+    else:
+        output_path = write_output(records, out_path)
 
     return {
         "records": records,

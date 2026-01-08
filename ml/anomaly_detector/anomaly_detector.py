@@ -393,7 +393,3 @@ class IsolationForestDetector:
         detector.model = load(model_path)
         detector.scaler = load(scaler_path)
         return detector
-
-
-if __name__ == "__main__":
-    pass

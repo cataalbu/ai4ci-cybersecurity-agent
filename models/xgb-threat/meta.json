@@ -42,25 +42,25 @@
   "feature_checksum": "9c5238a085397b4b371fefe333e7fb6f04a2ce36b103e593a5d33f7f25615f84",
   "class_counts": {
     "train": {
-      "healthy": 40,
-      "port_scan": 29,
-      "api_enum": 15,
-      "ddos": 15,
-      "bruteforce": 14
+      "healthy": 91,
+      "port_scan": 43,
+      "bruteforce": 42,
+      "api_enum": 35,
+      "ddos": 35
     },
     "val": {
-      "healthy": 32,
-      "port_scan": 9,
-      "bruteforce": 8,
-      "api_enum": 6,
-      "ddos": 6
+      "healthy": 92,
+      "bruteforce": 33,
+      "ddos": 23,
+      "api_enum": 22,
+      "port_scan": 22
     },
     "test": {
-      "healthy": 50,
-      "port_scan": 8,
-      "bruteforce": 6,
-      "ddos": 6,
-      "api_enum": 2
+      "healthy": 135,
+      "ddos": 26,
+      "port_scan": 17,
+      "bruteforce": 16,
+      "api_enum": 5
     }
   },
   "hyperparams": {
@@ -72,7 +72,7 @@
     "colsample_bynode": null,
     "colsample_bytree": 0.8,
     "device": null,
-    "early_stopping_rounds": 25,
+    "early_stopping_rounds": null,
     "enable_categorical": false,
     "eval_metric": "mlogloss",
     "feature_types": null,
@@ -88,7 +88,7 @@
     "max_delta_step": null,
     "max_depth": 6,
     "max_leaves": null,
-    "min_child_weight": 1.0,
+    "min_child_weight": 1,
     "missing": NaN,
     "monotone_constraints": null,
     "multi_strategy": null,
@@ -115,7 +115,7 @@
       "balanced_accuracy": 1.0,
       "confusion_matrix": [
         [
-          15,
+          35,
           0,
           0,
           0,
@@ -123,7 +123,7 @@
         ],
         [
           0,
-          14,
+          42,
           0,
           0,
           0
@@ -131,7 +131,7 @@
         [
           0,
           0,
-          15,
+          35,
           0,
           0
         ],
@@ -139,7 +139,7 @@
           0,
           0,
           0,
-          40,
+          91,
           0
         ],
         [
@@ -147,7 +147,7 @@
           0,
           0,
           0,
-          29
+          43
         ]
       ],
       "per_class_f1": {
@@ -158,30 +158,88 @@
         "port_scan": 1.0
       },
       "support": {
-        "api_enum": 15,
-        "bruteforce": 14,
-        "ddos": 15,
-        "healthy": 40,
-        "port_scan": 29
+        "api_enum": 35,
+        "bruteforce": 42,
+        "ddos": 35,
+        "healthy": 91,
+        "port_scan": 43
       },
       "top_1_accuracy": 1.0,
       "top_3_accuracy": 1.0
     },
     "val": {
-      "accuracy": 0.9508196721311475,
-      "macro_f1": 0.9439892344497608,
-      "balanced_accuracy": 0.9381944444444444,
+      "accuracy": 0.9947916666666666,
+      "macro_f1": 0.9944626593806921,
+      "balanced_accuracy": 0.9978260869565216,
+      "confusion_matrix": [
+        [
+          22,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          33,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          23,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          91,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          22
+        ]
+      ],
+      "per_class_f1": {
+        "api_enum": 1.0,
+        "bruteforce": 1.0,
+        "ddos": 1.0,
+        "healthy": 0.994535519125683,
+        "port_scan": 0.9777777777777777
+      },
+      "support": {
+        "api_enum": 22,
+        "bruteforce": 33,
+        "ddos": 23,
+        "healthy": 92,
+        "port_scan": 22
+      },
+      "top_1_accuracy": 0.9947916666666666,
+      "top_3_accuracy": 1.0
+    },
+    "test": {
+      "accuracy": 0.8894472361809045,
+      "macro_f1": 0.8883749999999999,
+      "balanced_accuracy": 0.9282084799731859,
       "confusion_matrix": [
         [
           5,
           0,
           0,
           0,
-          1
+          0
         ],
         [
           0,
-          8,
+          16,
           0,
           0,
           0
@@ -189,99 +247,41 @@
         [
           0,
           0,
-          6,
-          0,
-          0
-        ],
-        [
-          0,
-          0,
-          0,
-          31,
-          1
-        ],
-        [
-          0,
-          0,
-          0,
-          1,
-          8
-        ]
-      ],
-      "per_class_f1": {
-        "api_enum": 0.9090909090909091,
-        "bruteforce": 1.0,
-        "ddos": 1.0,
-        "healthy": 0.96875,
-        "port_scan": 0.8421052631578947
-      },
-      "support": {
-        "api_enum": 6,
-        "bruteforce": 8,
-        "ddos": 6,
-        "healthy": 32,
-        "port_scan": 9
-      },
-      "top_1_accuracy": 0.9508196721311475,
-      "top_3_accuracy": 1.0
-    },
-    "test": {
-      "accuracy": 0.8611111111111112,
-      "macro_f1": 0.8430735930735931,
-      "balanced_accuracy": 0.8593333333333334,
-      "confusion_matrix": [
-        [
+          23,
           2,
-          0,
-          0,
-          0,
-          0
-        ],
-        [
-          0,
-          6,
-          0,
-          0,
-          0
-        ],
-        [
-          0,
-          0,
-          4,
-          1,
           1
         ],
         [
           0,
           0,
           0,
-          44,
-          6
+          118,
+          17
         ],
         [
           0,
           0,
           1,
           1,
-          6
+          15
         ]
       ],
       "per_class_f1": {
         "api_enum": 1.0,
         "bruteforce": 1.0,
-        "ddos": 0.7272727272727273,
-        "healthy": 0.9166666666666666,
-        "port_scan": 0.5714285714285714
+        "ddos": 0.92,
+        "healthy": 0.921875,
+        "port_scan": 0.6
       },
       "support": {
-        "api_enum": 2,
-        "bruteforce": 6,
-        "ddos": 6,
-        "healthy": 50,
-        "port_scan": 8
+        "api_enum": 5,
+        "bruteforce": 16,
+        "ddos": 26,
+        "healthy": 135,
+        "port_scan": 17
       },
-      "top_1_accuracy": 0.8611111111111112,
-      "top_3_accuracy": 0.9861111111111112
+      "top_1_accuracy": 0.8894472361809045,
+      "top_3_accuracy": 0.9949748743718593
     }
   }
 }

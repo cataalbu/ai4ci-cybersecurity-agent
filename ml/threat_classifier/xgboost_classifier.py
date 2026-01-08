@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -84,7 +83,7 @@ def _etl_split(split_dir: str) -> pd.DataFrame:
     nginx = os.path.join(split_dir, "nginx_access.log")
     api = os.path.join(split_dir, "api_app.log")
     ufw = os.path.join(split_dir, "fw_ufw.log")
-    result = run_etl(nginx_path=nginx, api_path=api, ufw_path=ufw)
+    result = run_etl(nginx_path=nginx, api_path=api, ufw_path=ufw, skip_disk_write=True)
     df = pd.DataFrame(result["records"])
     if df.empty:
         return df
@@ -387,82 +386,4 @@ def predict_from_logs(log_dir: str, window_seconds: int, model_dir: str) -> pd.D
     )
 
 
-# ----------------------------
-# CLI
-# ----------------------------
-
-
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train/Eval XGBoost threat classifier.")
-    parser.add_argument("--logs-root", default="./logs", help="Root dir containing train/val/test splits.")
-    parser.add_argument("--train-split", default="train", help="Train split name.")
-    parser.add_argument("--eval-splits", nargs="*", default=["val", "test"], help="Eval split names.")
-    parser.add_argument("--window-seconds", type=int, default=None, help="Window size; if omitted, inferred from manifest.")
-    parser.add_argument("--model-dir", default="./models/xgb-threat", help="Output model directory.")
-    parser.add_argument("--eval-only", action="store_true", help="Skip training; just eval with existing model.")
-    parser.add_argument("--train-only", action="store_true", help="Train without evaluation splits.")
-    parser.add_argument("--early-stopping-rounds", type=int, default=25, help="Early stopping rounds.")
-    parser.add_argument("--n-estimators", type=int, default=500)
-    parser.add_argument("--max-depth", type=int, default=6)
-    parser.add_argument("--learning-rate", type=float, default=0.05)
-    parser.add_argument("--subsample", type=float, default=0.8)
-    parser.add_argument("--colsample-bytree", type=float, default=0.8)
-    parser.add_argument("--reg-lambda", type=float, default=1.0)
-    parser.add_argument("--min-child-weight", type=float, default=1.0)
-    return parser.parse_args(argv)
-
-
-def main(argv: Optional[List[str]] = None) -> None:
-    args = parse_args(argv)
-
-    hyperparams = {
-        "n_estimators": args.n_estimators,
-        "max_depth": args.max_depth,
-        "learning_rate": args.learning_rate,
-        "subsample": args.subsample,
-        "colsample_bytree": args.colsample_bytree,
-        "reg_lambda": args.reg_lambda,
-        "min_child_weight": args.min_child_weight,
-        "early_stopping_rounds": args.early_stopping_rounds,
-    }
-
-    logs_root = args.logs_root
-    train_dir = os.path.join(logs_root, args.train_split)
-    train_split = load_split(train_dir, "train", args.window_seconds)
-    window_seconds = args.window_seconds or train_split.window_seconds
-
-    val_split = None
-    test_split = None
-    if not args.train_only:
-        splits = []
-        for split_name in args.eval_splits:
-            split_path = os.path.join(logs_root, split_name)
-            if os.path.exists(os.path.join(split_path, "manifest.jsonl")):
-                splits.append((split_name, load_split(split_path, split_name, window_seconds)))
-        for name, data in splits:
-            if name == "val":
-                val_split = data
-            elif name == "test":
-                test_split = data
-
-    if args.eval_only:
-        # Load artifacts and evaluate val/test using predict_from_logs is overkill;
-        # for now, re-train path is required to access metrics cleanly.
-        print("Eval-only mode not implemented without training in-session.", file=sys.stderr)
-        sys.exit(1)
-
-    model, label_encoder, metrics = train_and_evaluate(
-        train_split=train_split,
-        val_split=val_split,
-        test_split=test_split,
-        model_dir=args.model_dir,
-        window_seconds=window_seconds,
-        hyperparams=hyperparams,
-    )
-
-    print(json.dumps({"model_dir": args.model_dir, "metrics": metrics}, indent=2, default=str))
-
-
-if __name__ == "__main__":
-    main()
 

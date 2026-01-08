@@ -1,0 +1,176 @@
+{
+  "train": {
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "balanced_accuracy": 1.0,
+    "confusion_matrix": [
+      [
+        35,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        42,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        35,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        91,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        43
+      ]
+    ],
+    "per_class_f1": {
+      "api_enum": 1.0,
+      "bruteforce": 1.0,
+      "ddos": 1.0,
+      "healthy": 1.0,
+      "port_scan": 1.0
+    },
+    "support": {
+      "api_enum": 35,
+      "bruteforce": 42,
+      "ddos": 35,
+      "healthy": 91,
+      "port_scan": 43
+    },
+    "top_1_accuracy": 1.0,
+    "top_3_accuracy": 1.0
+  },
+  "val": {
+    "accuracy": 0.9947916666666666,
+    "macro_f1": 0.9944626593806921,
+    "balanced_accuracy": 0.9978260869565216,
+    "confusion_matrix": [
+      [
+        22,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        33,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        23,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        91,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        22
+      ]
+    ],
+    "per_class_f1": {
+      "api_enum": 1.0,
+      "bruteforce": 1.0,
+      "ddos": 1.0,
+      "healthy": 0.994535519125683,
+      "port_scan": 0.9777777777777777
+    },
+    "support": {
+      "api_enum": 22,
+      "bruteforce": 33,
+      "ddos": 23,
+      "healthy": 92,
+      "port_scan": 22
+    },
+    "top_1_accuracy": 0.9947916666666666,
+    "top_3_accuracy": 1.0
+  },
+  "test": {
+    "accuracy": 0.8894472361809045,
+    "macro_f1": 0.8883749999999999,
+    "balanced_accuracy": 0.9282084799731859,
+    "confusion_matrix": [
+      [
+        5,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        16,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        23,
+        2,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        118,
+        17
+      ],
+      [
+        0,
+        0,
+        1,
+        1,
+        15
+      ]
+    ],
+    "per_class_f1": {
+      "api_enum": 1.0,
+      "bruteforce": 1.0,
+      "ddos": 0.92,
+      "healthy": 0.921875,
+      "port_scan": 0.6
+    },
+    "support": {
+      "api_enum": 5,
+      "bruteforce": 16,
+      "ddos": 26,
+      "healthy": 135,
+      "port_scan": 17
+    },
+    "top_1_accuracy": 0.8894472361809045,
+    "top_3_accuracy": 0.9949748743718593
+  }
+}
