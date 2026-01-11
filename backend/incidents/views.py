@@ -1,16 +1,42 @@
+from django.db import transaction
 from django.db.models import Q
-from rest_framework import viewsets
-from rest_framework.decorators import api_view
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
 from incidents.models import AttackIncident
-from incidents.serializers import AttackIncidentSerializer
+from incidents.serializers import (
+    AttackIncidentCreateSerializer,
+    AttackIncidentReadSerializer,
+    AttackIncidentStatusSerializer,
+)
+from incidents.services.jira import (
+    JiraIntegrationError,
+    JiraIntegrationUnavailable,
+    JiraIntegrationValidationError,
+    create_jira_ticket_for_incident_from_db,
+)
+from incidents.services.notifications import notify_slack_incident_created
 from incidents.threat_intel_service import lookup_ip_reputation
 
 
 class AttackIncidentViewSet(viewsets.ModelViewSet):
     queryset = AttackIncident.objects.all()
-    serializer_class = AttackIncidentSerializer
+
+    def get_serializer_class(self):
+        if self.action in {"list", "retrieve"}:
+            return AttackIncidentReadSerializer
+        return AttackIncidentCreateSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        incident = serializer.instance
+        if incident is not None:
+            transaction.on_commit(lambda: notify_slack_incident_created(incident))
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -66,6 +92,46 @@ class AttackIncidentViewSet(viewsets.ModelViewSet):
         else:
             qs = qs.order_by("-last_seen_at")
         return qs
+
+    @action(detail=True, methods=["post"], url_path="jira/create")
+    def create_jira_ticket(self, request, pk=None):
+        return _handle_jira_ticket_create(pk)
+
+    @action(detail=True, methods=["patch"], url_path="status")
+    def update_status(self, request, pk=None):
+        incident = self.get_object()
+        serializer = AttackIncidentStatusSerializer(incident, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(AttackIncidentReadSerializer(incident).data)
+
+
+def _handle_jira_ticket_create(incident_id):
+    try:
+        result = create_jira_ticket_for_incident_from_db(incident_id)
+    except JiraIntegrationUnavailable as exc:
+        return Response(
+            {"detail": "Jira integration is disabled or unavailable.", "error": str(exc)},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except JiraIntegrationValidationError as exc:
+        return Response(
+            {"detail": "Incident title/summary not set on incident.", "error": str(exc)},
+            status=422,
+        )
+    except JiraIntegrationError as exc:
+        return Response(
+            {"detail": "Failed to create Jira issue.", "error": str(exc)},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    return Response(
+        {
+            "incident_id": str(incident_id),
+            "jira_issue_key": result.get("jira_issue_key"),
+            "jira_issue_url": result.get("jira_issue_url"),
+        }
+    )
 
 
 @api_view(["GET"])

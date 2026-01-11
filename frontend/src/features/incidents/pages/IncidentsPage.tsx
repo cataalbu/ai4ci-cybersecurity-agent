@@ -5,38 +5,40 @@ import type {
   AttackIncident,
   IncidentAttackType,
   IncidentListParams,
-  IncidentProtocol,
   IncidentStatus,
-} from "../types/incidents.types";
-import { createIncident, deleteIncident, listIncidents } from "../api/incidents.api";
-
-type NewIncidentForm = {
-  title: string;
-  attack_type: IncidentAttackType;
-  severity: string;
-  status: IncidentStatus;
-  source_ip: string;
-  dest_ip: string;
-  dest_port: string;
-  protocol: IncidentProtocol | "";
-  first_seen_at: string;
-  last_seen_at: string;
-};
+} from "@/features/incidents/types/incidents.types";
+import {
+  createIncident,
+  createJiraTicket,
+  deleteIncident,
+  listIncidents,
+  updateIncident,
+} from "@/features/incidents/api/incidents.api";
+import IncidentsFilters from "@/features/incidents/components/IncidentsFilters";
+import IncidentsTable from "@/features/incidents/components/IncidentsTable";
+import NewIncidentForm, {
+  type NewIncidentFormValues,
+} from "@/features/incidents/components/NewIncidentForm";
 
 const nowInputValue = () => new Date().toISOString().slice(0, 16);
 
-const defaultForm = (): NewIncidentForm => ({
-  title: "",
-  attack_type: "port_scan",
-  severity: "50",
-  status: "open",
-  source_ip: "203.0.113.5",
-  dest_ip: "10.0.0.5",
-  dest_port: "",
-  protocol: "tcp",
-  first_seen_at: nowInputValue(),
-  last_seen_at: nowInputValue(),
-});
+const defaultForm = (): NewIncidentFormValues => {
+  const defaultAttackType: IncidentAttackType = "port_scan";
+  const defaultSourceIp = "203.0.113.5";
+  return {
+    title: "",
+    summary: "",
+    attack_type: defaultAttackType,
+    severity: "50",
+    status: "open",
+    source_ip: defaultSourceIp,
+    dest_ip: "10.0.0.5",
+    dest_port: "",
+    protocol: "tcp",
+    first_seen_at: nowInputValue(),
+    last_seen_at: nowInputValue(),
+  };
+};
 
 export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<AttackIncident[]>([]);
@@ -47,7 +49,7 @@ export default function IncidentsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [minSeverity, setMinSeverity] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [form, setForm] = useState<NewIncidentForm>(defaultForm());
+  const [form, setForm] = useState<NewIncidentFormValues>(defaultForm());
 
   const queryParams = useMemo<IncidentListParams>(() => {
     const params: IncidentListParams = { ordering: "-last_seen_at" };
@@ -108,6 +110,7 @@ export default function IncidentsPage() {
     try {
       await createIncident({
         title: form.title,
+        summary: form.summary,
         attack_type: form.attack_type,
         severity: Number.isNaN(severityValue) ? 0 : severityValue,
         status: form.status,
@@ -125,6 +128,36 @@ export default function IncidentsPage() {
     }
   };
 
+  const handleCreateJira = async (id: string) => {
+    setError(null);
+    try {
+      await createJiraTicket(id);
+      await loadIncidents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create Jira ticket.");
+    }
+  };
+
+  const handleStatusChange = async (id: string, nextStatus: IncidentStatus) => {
+    const current = incidents.find((incident) => incident.id === id);
+    if (!current || current.status === nextStatus) {
+      return;
+    }
+    setError(null);
+    try {
+      const updated = await updateIncident(id, { status: nextStatus });
+      setIncidents((prev) => {
+        const nextList = prev.map((incident) => (incident.id === id ? updated : incident));
+        if (statusFilter !== "all" && updated.status !== statusFilter) {
+          return nextList.filter((incident) => incident.id !== id);
+        }
+        return nextList;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update status.");
+    }
+  };
+
   return (
     <div className="incidents-page">
       <header className="incidents-header">
@@ -137,167 +170,18 @@ export default function IncidentsPage() {
         </button>
       </header>
 
-      <section className="filters">
-        <label>
-          Status
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">All</option>
-            <option value="open">Open</option>
-            <option value="mitigated">Mitigated</option>
-            <option value="false_positive">False positive</option>
-            <option value="ignored">Ignored</option>
-          </select>
-        </label>
-        <label>
-          Attack type
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <option value="all">All</option>
-            <option value="ddos">ddos</option>
-            <option value="port_scan">port_scan</option>
-            <option value="bruteforce">bruteforce</option>
-            <option value="malware">malware</option>
-            <option value="unknown">unknown</option>
-          </select>
-        </label>
-        <label>
-          Min severity
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={minSeverity}
-            onChange={(event) => setMinSeverity(event.target.value)}
-            placeholder="0"
-          />
-        </label>
-        <label className="filters-search">
-          Search
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Title, IP, asset..."
-          />
-        </label>
-      </section>
+      <IncidentsFilters
+        statusFilter={statusFilter}
+        typeFilter={typeFilter}
+        minSeverity={minSeverity}
+        searchQuery={searchQuery}
+        onStatusChange={setStatusFilter}
+        onTypeChange={setTypeFilter}
+        onMinSeverityChange={setMinSeverity}
+        onSearchChange={setSearchQuery}
+      />
 
-      <details className="new-incident" open>
-        <summary>New incident</summary>
-        <form onSubmit={handleCreate} className="incident-form">
-          <label>
-            Title
-            <input
-              type="text"
-              value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Attack type
-            <select
-              value={form.attack_type}
-              onChange={(event) =>
-                setForm({ ...form, attack_type: event.target.value as IncidentAttackType })
-              }
-            >
-              <option value="ddos">ddos</option>
-              <option value="port_scan">port_scan</option>
-              <option value="bruteforce">bruteforce</option>
-              <option value="malware">malware</option>
-              <option value="unknown">unknown</option>
-            </select>
-          </label>
-          <label>
-            Severity
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={form.severity}
-              onChange={(event) => setForm({ ...form, severity: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Status
-            <select
-              value={form.status}
-              onChange={(event) => setForm({ ...form, status: event.target.value as IncidentStatus })}
-            >
-              <option value="open">open</option>
-              <option value="mitigated">mitigated</option>
-              <option value="false_positive">false_positive</option>
-              <option value="ignored">ignored</option>
-            </select>
-          </label>
-          <label>
-            Source IP
-            <input
-              type="text"
-              value={form.source_ip}
-              onChange={(event) => setForm({ ...form, source_ip: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Destination IP
-            <input
-              type="text"
-              value={form.dest_ip}
-              onChange={(event) => setForm({ ...form, dest_ip: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            Destination port
-            <input
-              type="number"
-              min="1"
-              max="65535"
-              value={form.dest_port}
-              onChange={(event) => setForm({ ...form, dest_port: event.target.value })}
-              placeholder="Optional"
-            />
-          </label>
-          <label>
-            Protocol
-            <select
-              value={form.protocol}
-              onChange={(event) =>
-                setForm({ ...form, protocol: event.target.value as IncidentProtocol })
-              }
-            >
-              <option value="">(optional)</option>
-              <option value="tcp">tcp</option>
-              <option value="udp">udp</option>
-              <option value="icmp">icmp</option>
-              <option value="other">other</option>
-            </select>
-          </label>
-          <label>
-            First seen at
-            <input
-              type="datetime-local"
-              value={form.first_seen_at}
-              onChange={(event) => setForm({ ...form, first_seen_at: event.target.value })}
-            />
-          </label>
-          <label>
-            Last seen at
-            <input
-              type="datetime-local"
-              value={form.last_seen_at}
-              onChange={(event) => setForm({ ...form, last_seen_at: event.target.value })}
-            />
-          </label>
-          <div className="form-actions">
-            <button type="submit" className="button primary">
-              Create incident
-            </button>
-          </div>
-        </form>
-      </details>
+      <NewIncidentForm form={form} onSubmit={handleCreate} onChange={setForm} />
 
       {loading && <p className="status">Loading incidents...</p>}
       {error && <p className="status error">{error}</p>}
@@ -307,49 +191,12 @@ export default function IncidentsPage() {
       )}
 
       {!loading && incidents.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Last seen</th>
-                <th>Title</th>
-                <th>Attack type</th>
-                <th>Severity</th>
-                <th>Status</th>
-                <th>Source</th>
-                <th>Destination</th>
-                <th>Protocol</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {incidents.map((incident) => (
-                <tr key={incident.id}>
-                  <td>{new Date(incident.last_seen_at).toLocaleString()}</td>
-                  <td>{incident.title}</td>
-                  <td>{incident.attack_type}</td>
-                  <td>{incident.severity}</td>
-                  <td>{incident.status}</td>
-                  <td>{incident.source_ip}</td>
-                  <td>
-                    {incident.dest_ip}
-                    {incident.dest_port ? `:${incident.dest_port}` : ""}
-                  </td>
-                  <td>{incident.protocol || "-"}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="button ghost"
-                      onClick={() => handleDelete(incident.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <IncidentsTable
+          incidents={incidents}
+          onCreateJira={handleCreateJira}
+          onDelete={handleDelete}
+          onStatusChange={handleStatusChange}
+        />
       )}
     </div>
   );

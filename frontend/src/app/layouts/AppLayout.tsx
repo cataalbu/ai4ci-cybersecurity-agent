@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 
-import { routes } from "../config/routes";
-import "../App.css";
+import { routes } from "@/app/config/routes";
+import "@/app/App.css";
 
 export default function AppLayout() {
   return (

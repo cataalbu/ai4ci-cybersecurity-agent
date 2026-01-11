@@ -1,9 +1,10 @@
-import { API_BASE_URL } from "../../../app/config/env";
+import { API_BASE_URL } from "@/app/config/env";
 import type {
   AttackIncident,
   IncidentCreatePayload,
   IncidentListParams,
-} from "../types/incidents.types";
+  IncidentUpdatePayload,
+} from "@/features/incidents/types/incidents.types";
 
 async function parseJson(response: Response) {
   if (!response.ok) {
@@ -50,10 +51,29 @@ export async function listIncidents(params?: IncidentListParams): Promise<Attack
   return [];
 }
 
+export async function getIncident(id: string): Promise<AttackIncident> {
+  const url = `${API_BASE_URL}/api/incidents/${id}/`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  return parseJson(response);
+}
+
 export async function createIncident(payload: IncidentCreatePayload): Promise<AttackIncident> {
   const url = `${API_BASE_URL}/api/incidents/`;
   const response = await fetch(url, {
     method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson(response);
+}
+
+export async function updateIncident(
+  id: string,
+  payload: IncidentUpdatePayload,
+): Promise<AttackIncident> {
+  const url = `${API_BASE_URL}/api/incidents/${id}/`;
+  const response = await fetch(url, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(payload),
   });
@@ -67,4 +87,17 @@ export async function deleteIncident(id: string): Promise<void> {
     const text = await response.text();
     throw new Error(text || `Delete failed with ${response.status}`);
   }
+}
+
+export async function createJiraTicket(id: string): Promise<{
+  incident_id: string;
+  jira_issue_key: string;
+  jira_issue_url: string;
+}> {
+  const url = `${API_BASE_URL}/api/incidents/${id}/jira/create/`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+  return parseJson(response);
 }

@@ -24,6 +24,10 @@ export interface AttackIncident {
   summary?: string;
   action_taken?: string;
   external_refs: Record<string, unknown>;
+  jira_issue_key?: string | null;
+  jira_issue_url?: string | null;
+  jira_created_at?: string | null;
+  last_jira_error?: string | null;
 }
 
 export interface IncidentListParams {
@@ -45,4 +49,9 @@ export interface IncidentCreatePayload {
   protocol?: IncidentProtocol | "";
   first_seen_at?: string;
   last_seen_at?: string;
+  summary: string;
 }
+
+export type IncidentUpdatePayload = Partial<IncidentCreatePayload> & {
+  status?: IncidentStatus;
+};

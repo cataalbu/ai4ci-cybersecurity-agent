@@ -38,6 +38,23 @@ def _load_dotenv(path: Path) -> None:
 _load_dotenv(BASE_DIR / ".env")
 
 
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -157,6 +174,45 @@ ABUSEIPDB_MAX_AGE_DAYS = int(os.getenv("ABUSEIPDB_MAX_AGE_DAYS", "90"))
 ABUSEIPDB_TIMEOUT_SECONDS = int(os.getenv("ABUSEIPDB_TIMEOUT_SECONDS", "5"))
 ABUSEIPDB_CACHE_TTL_SECONDS = int(os.getenv("ABUSEIPDB_CACHE_TTL_SECONDS", "86400"))
 ABUSEIPDB_RETRIES = int(os.getenv("ABUSEIPDB_RETRIES", "2"))
+
+# Jira (Cloud)
+JIRA_BASE_URL = os.getenv("JIRA_BASE_URL")
+JIRA_EMAIL = os.getenv("JIRA_EMAIL")
+JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
+JIRA_PROJECT_KEY = os.getenv("JIRA_PROJECT_KEY")
+JIRA_ISSUE_TYPE = os.getenv("JIRA_ISSUE_TYPE", "Incident")
+JIRA_DEFAULT_PRIORITY = os.getenv("JIRA_DEFAULT_PRIORITY") or None
+JIRA_LABELS = [label.strip() for label in os.getenv("JIRA_LABELS", "").split(",") if label.strip()]
+JIRA_TIMEOUT_SECONDS = _env_int("JIRA_TIMEOUT_SECONDS", 10)
+JIRA_RETRIES = _env_int("JIRA_RETRIES", 2)
+JIRA_ENABLED = all([JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY])
+JIRA = {
+    "enabled": JIRA_ENABLED,
+    "base_url": JIRA_BASE_URL,
+    "email": JIRA_EMAIL,
+    "api_token": JIRA_API_TOKEN,
+    "project_key": JIRA_PROJECT_KEY,
+    "issue_type": JIRA_ISSUE_TYPE,
+    "default_priority": JIRA_DEFAULT_PRIORITY,
+    "labels": JIRA_LABELS,
+    "timeout_seconds": JIRA_TIMEOUT_SECONDS,
+    "retries": JIRA_RETRIES,
+}
+
+# Slack
+SLACK_ENABLED = _env_bool("SLACK_ENABLED", False)
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+SLACK_CHANNEL_ID = os.getenv("SLACK_CHANNEL_ID")
+SLACK_ICON_EMOJI = os.getenv("SLACK_ICON_EMOJI")
+SLACK_BOT_NAME = os.getenv("SLACK_BOT_NAME")
+SLACK_ACTIVE = bool(SLACK_ENABLED and SLACK_BOT_TOKEN and SLACK_CHANNEL_ID)
+SLACK = {
+    "enabled": SLACK_ACTIVE,
+    "bot_token": SLACK_BOT_TOKEN,
+    "channel_id": SLACK_CHANNEL_ID,
+    "icon_emoji": SLACK_ICON_EMOJI,
+    "bot_name": SLACK_BOT_NAME,
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
