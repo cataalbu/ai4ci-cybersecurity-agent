@@ -56,6 +56,12 @@ class AttackIncident(models.Model):
     summary = models.TextField(blank=True)
     action_taken = models.CharField(max_length=50, blank=True)
     external_refs = models.JSONField(default=dict, blank=True)
+    jira_issue_key = models.CharField(max_length=50, null=True, blank=True, db_index=True)
+    jira_issue_url = models.URLField(null=True, blank=True)
+    jira_created_at = models.DateTimeField(null=True, blank=True)
+    last_jira_error = models.TextField(null=True, blank=True)
+    slack_notified_at = models.DateTimeField(null=True, blank=True)
+    last_slack_error = models.TextField(null=True, blank=True)
 
     class Meta:
         indexes = [
