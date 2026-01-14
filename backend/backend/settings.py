@@ -10,10 +10,32 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -41,6 +63,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'incidents',
+    'threat_intel',
 ]
 
 MIDDLEWARE = [
@@ -126,6 +149,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
+
+# Threat intel (AbuseIPDB)
+ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY")
+ABUSEIPDB_BASE_URL = os.getenv("ABUSEIPDB_BASE_URL", "https://api.abuseipdb.com/api/v2")
+ABUSEIPDB_MAX_AGE_DAYS = int(os.getenv("ABUSEIPDB_MAX_AGE_DAYS", "90"))
+ABUSEIPDB_TIMEOUT_SECONDS = int(os.getenv("ABUSEIPDB_TIMEOUT_SECONDS", "5"))
+ABUSEIPDB_CACHE_TTL_SECONDS = int(os.getenv("ABUSEIPDB_CACHE_TTL_SECONDS", "86400"))
+ABUSEIPDB_RETRIES = int(os.getenv("ABUSEIPDB_RETRIES", "2"))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
