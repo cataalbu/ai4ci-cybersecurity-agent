@@ -29,7 +29,6 @@ export default function IncidentsTable({
         <thead>
           <tr>
             <th>Summary title</th>
-            <th>Summary description</th>
             <th>Attack type</th>
             <th>Severity</th>
             <th>Status</th>
@@ -46,7 +45,6 @@ export default function IncidentsTable({
                   {incident.title}
                 </Link>
               </td>
-              <td className="summary-cell">{incident.summary || "-"}</td>
               <td>{incident.attack_type}</td>
               <td>{incident.severity}</td>
               <td>

@@ -9,7 +9,7 @@ LOG_DIR="ml/training_data/threat_classifier/sample_bruteforce"
 WINDOW_SECONDS=60
 MODEL_DIR="models/xgb-threat"
 
-python ml/threat_classifier/summarize_incidents.py \
+python ml/incident_summarizer/summarize_incidents.py \
   --log-dir "${LOG_DIR}" \
   --window-seconds "${WINDOW_SECONDS}" \
   --model-dir "${MODEL_DIR}" \

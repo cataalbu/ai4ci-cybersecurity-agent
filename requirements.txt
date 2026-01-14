@@ -1,0 +1,8 @@
+langgraph
+langchain-openai
+langchain-core
+numpy
+pandas
+scikit-learn
+xgboost
+joblib

@@ -38,6 +38,7 @@ export default function IncidentsFilters({
           <option value="ddos">ddos</option>
           <option value="port_scan">port_scan</option>
           <option value="bruteforce">bruteforce</option>
+          <option value="api_enum">api_enum</option>
           <option value="malware">malware</option>
           <option value="unknown">unknown</option>
         </select>

@@ -9,8 +9,7 @@ class AttackType(models.TextChoices):
     DDOS = "ddos", "ddos"
     PORT_SCAN = "port_scan", "port_scan"
     BRUTEFORCE = "bruteforce", "bruteforce"
-    MALWARE = "malware", "malware"
-    UNKNOWN = "unknown", "unknown"
+    API_ENUM = "api_enum", "api_enum"
 
 
 class IncidentStatus(models.TextChoices):

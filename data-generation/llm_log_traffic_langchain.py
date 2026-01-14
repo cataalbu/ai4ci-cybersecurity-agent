@@ -16,7 +16,7 @@ from langgraph.graph import END, StateGraph
 
 @dataclass
 class Config:
-    model: str = "openai/gpt-oss-20b"
+    model: str = "openai/gpt-oss-20b:2"
     base_url: str = "http://localhost:1234/v1"
     api_key: str = os.getenv("OPENAI_API_KEY", "lm-studio")
     hostname: str = "web-1"

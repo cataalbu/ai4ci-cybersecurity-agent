@@ -1,5 +1,11 @@
 export type IncidentStatus = "open" | "mitigated" | "false_positive" | "ignored";
-export type IncidentAttackType = "ddos" | "port_scan" | "bruteforce" | "malware" | "unknown";
+export type IncidentAttackType =
+  | "ddos"
+  | "port_scan"
+  | "bruteforce"
+  | "api_enum"
+  | "malware"
+  | "unknown";
 export type IncidentProtocol = "tcp" | "udp" | "icmp" | "other";
 
 export interface AttackIncident {
